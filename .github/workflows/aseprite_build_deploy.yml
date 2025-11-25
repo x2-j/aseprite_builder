@@ -50,22 +50,21 @@ jobs:
 
       - name: Download Skia if not in cache
         if: steps.skia-cache.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           curl -o Skia-Windows-Release-X64.zip -L https://github.com/aseprite/skia/releases/download/m81-b607b32047/Skia-Windows-Release-X64.zip
           unzip Skia-Windows-Release-X64.zip -d skia
 
       - name: Download Aseprite source
+        shell: bash
         run: |
           curl -o Aseprite-source.zip -L ${{ needs.check-version.outputs.download_url }}
           unzip Aseprite-source.zip -d aseprite
           mkdir -p aseprite/build
 
-      - name: Set architecture for the produced binary
-        shell: cmd
-        run: call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=x64
-
+      # Use latest version of the VS dev env action (old v1 is a bit of a relic)
       - name: Setting Visual Studio build environment variables and paths
-        uses: seanmiddleditch/gha-setup-vsdevenv@v1
+        uses: seanmiddleditch/gha-setup-vsdevenv@v5
 
       - name: Run CMake (Windows)
         working-directory: aseprite/build
@@ -83,15 +82,5 @@ jobs:
 
       - name: Make portable ini
         working-directory: aseprite/build/bin
-        run: echo '# This file is here so Aseprite behaves as a portable program' > aseprite.ini
-
-      - name: Create zip
-        working-directory: aseprite/build/bin
-        run: 7z -tzip a Aseprite-${{ needs.check-version.outputs.latest_tag }}-${{ runner.os }}.zip *
-
-      - name: Upload build as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Aseprite-${{ needs.check-version.outputs.latest_tag }}-${{ runner.os }}
-          path: aseprite/build/bin/Aseprite-${{ needs.check-version.outputs.latest_tag }}-${{ runner.os }}.zip
-          if-no-files-found: error
+        shell: bash
+        run: ec
