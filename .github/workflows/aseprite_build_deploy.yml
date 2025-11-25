@@ -1,4 +1,4 @@
-name: Build Aseprite
+name: Build Aseprite 1.3.12 (pinned)
 
 on:
   schedule:
@@ -9,78 +9,83 @@ on:
   workflow_dispatch:
 
 env:
-  BUILD_TYPE: Release
-  
+  BUILD_TYPE: RelWithDebInfo
+  ASEPRITE_VERSION: 1.3.12
+  SKIA_VERSION: m102-861e4743af
+
 jobs:
-  check-version:
-    name: Get latest Aseprite release info
-    runs-on: ubuntu-latest
-    outputs:
-      download_url: ${{ steps.version_info.outputs.download_url }}
-      latest_tag: ${{ steps.version_info.outputs.latest_tag }}
-    steps:
-      - name: Get latest version info
-        id: version_info
-        run: |
-          data=$(curl -sL https://api.github.com/repos/aseprite/aseprite/releases/latest)
-          LATEST_TAG=$(echo "${data}" | jq -r '.tag_name')
-          DOWNLOAD_URL=$(echo "${data}" | jq -r '.assets[0].browser_download_url')
-          VERSION_INFO=$(echo "${data}" | jq -r '.body')
-
-          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "download_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
-          echo "version_info<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$VERSION_INFO" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
   build-aseprite:
-    name: Build Aseprite (Windows)
-    needs: check-version
+    name: Build Aseprite (Windows, pinned)
     runs-on: windows-latest
 
     steps:
-      # No Ninja setup step needed – Ninja is already available on GitHub's Windows runners
-
+      # Skia cache so we don't download it every time
       - name: Get Skia from cache
         id: skia-cache
         uses: actions/cache@v4
         with:
           path: skia
-          key: skia-windows-cache
+          key: skia-windows-${{ env.SKIA_VERSION }}
 
-      - name: Download Skia if not in cache
+      - name: Download Skia (prebuilt m102) if not in cache
         if: steps.skia-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          curl -o Skia-Windows-Release-X64.zip -L https://github.com/aseprite/skia/releases/download/m81-b607b32047/Skia-Windows-Release-X64.zip
-          unzip Skia-Windows-Release-X64.zip -d skia
+          curl -L \
+            "https://github.com/aseprite/skia/releases/download/${SKIA_VERSION}/Skia-Windows-Release-x64.zip" \
+            -o Skia-Windows-Release-x64.zip
+          unzip Skia-Windows-Release-x64.zip -d skia
 
-      - name: Download Aseprite source
+      - name: Download Aseprite v${{ env.ASEPRITE_VERSION }} source
         shell: bash
         run: |
-          curl -o Aseprite-source.zip -L ${{ needs.check-version.outputs.download_url }}
+          curl -L \
+            "https://github.com/aseprite/aseprite/releases/download/v${ASEPRITE_VERSION}/Aseprite-v${ASEPRITE_VERSION}-Source.zip" \
+            -o Aseprite-source.zip
+          # Extract into ./aseprite and create build dir
           unzip Aseprite-source.zip -d aseprite
           mkdir -p aseprite/build
 
-      # Use latest version of the VS dev env action (old v1 is a bit of a relic)
-      - name: Setting Visual Studio build environment variables and paths
+      # Set up Visual Studio build environment (VS 2022 on windows-latest)
+      - name: Setup MSVC developer environment
         uses: seanmiddleditch/gha-setup-vsdevenv@v5
 
-      - name: Run CMake (Windows)
+      - name: Configure CMake (Windows + Skia m102)
         working-directory: aseprite/build
         shell: cmd
-        run: cmake -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_IGNORE_PATH="C:/ProgramData/chocolatey/bin/;C:/Strawberry/c/bin/" -DLAF_BACKEND=skia -DSKIA_DIR=../../skia -DSKIA_LIBRARY_DIR=../../skia/out/Release-x64 -G Ninja ..
+        run: >
+          cmake
+          -DCMAKE_BUILD_TYPE=%BUILD_TYPE%
+          -DLAF_BACKEND=skia
+          -DSKIA_DIR=../../skia
+          -DSKIA_LIBRARY_DIR=../../skia/out/Release-x64
+          -DSKIA_LIBRARY=../../skia/out/Release-x64/skia.lib
+          -G Ninja
+          ..
 
-      - name: Run Ninja
+      - name: Build with Ninja
         working-directory: aseprite/build
         run: ninja aseprite
 
-      - name: Clean up build
+      - name: Clean up extra build helpers
         working-directory: aseprite/build/bin
         shell: bash
-        run: rm -f gen modp_b64_gen gen.exe gen.exe.manifest modp_b64_gen.exe modp_b64_gen.exe.manifest || true
+        run: |
+          rm -f gen modp_b64_gen gen.exe gen.exe.manifest \
+                modp_b64_gen.exe modp_b64_gen.exe.manifest || true
 
       - name: Make portable ini
         working-directory: aseprite/build/bin
         shell: bash
-        run: ec
+        run: echo '# This file is here so Aseprite behaves as a portable program' > aseprite.ini
+
+      - name: Create ZIP archive
+        working-directory: aseprite/build/bin
+        run: 7z -tzip a Aseprite-${{ env.ASEPRITE_VERSION }}-${{ runner.os }}.zip *
+
+      - name: Upload build as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aseprite-${{ env.ASEPRITE_VERSION }}-${{ runner.os }}
+          path: aseprite/build/bin/Aseprite-${{ env.ASEPRITE_VERSION }}-${{ runner.os }}.zip
+          if-no-files-found: error
