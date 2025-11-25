@@ -34,30 +34,25 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
   build-aseprite:
-    name: Build Aseprite
+    name: Build Aseprite (Windows)
     needs: check-version
-    runs-on: ${{ matrix.os }}
-    strategy:
-       matrix:
-         os: [windows-latest]
-       fail-fast: false    
+    runs-on: windows-latest
+
     steps:
-      - name: (Windows) Install dependencies
-        if: matrix.os == 'windows-latest'
-        uses: seanmiddleditch/gha-setup-ninja@v1
+      # No Ninja setup step needed – Ninja is already available on GitHub's Windows runners
 
       - name: Get Skia from cache
         id: skia-cache
         uses: actions/cache@v4
         with:
           path: skia
-          key: skia-${{ matrix.os }}-cache
+          key: skia-windows-cache
 
       - name: Download Skia if not in cache
         if: steps.skia-cache.outputs.cache-hit != 'true'
         run: |
-          curl -o Skia-${{ runner.os }}-Release-X64.zip -L https://github.com/aseprite/skia/releases/download/m81-b607b32047/Skia-${{ runner.os }}-Release-X64.zip
-          unzip Skia-${{ runner.os }}-Release-X64.zip -d skia
+          curl -o Skia-Windows-Release-X64.zip -L https://github.com/aseprite/skia/releases/download/m81-b607b32047/Skia-Windows-Release-X64.zip
+          unzip Skia-Windows-Release-X64.zip -d skia
 
       - name: Download Aseprite source
         run: |
@@ -65,17 +60,14 @@ jobs:
           unzip Aseprite-source.zip -d aseprite
           mkdir -p aseprite/build
 
-      - name: (Windows) Set architecture for the produced binary
-        if: matrix.os == 'windows-latest'
+      - name: Set architecture for the produced binary
         shell: cmd
         run: call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=x64
 
-      - name: (Windows) Setting Visual Studio build environment variables and paths
-        if: matrix.os == 'windows-latest'
+      - name: Setting Visual Studio build environment variables and paths
         uses: seanmiddleditch/gha-setup-vsdevenv@v1
 
-      - name: (Windows) Run CMake
-        if: matrix.os == 'windows-latest'
+      - name: Run CMake (Windows)
         working-directory: aseprite/build
         shell: cmd
         run: cmake -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_IGNORE_PATH="C:/ProgramData/chocolatey/bin/;C:/Strawberry/c/bin/" -DLAF_BACKEND=skia -DSKIA_DIR=../../skia -DSKIA_LIBRARY_DIR=../../skia/out/Release-x64 -G Ninja ..
@@ -89,7 +81,7 @@ jobs:
         shell: bash
         run: rm -f gen modp_b64_gen gen.exe gen.exe.manifest modp_b64_gen.exe modp_b64_gen.exe.manifest || true
 
-      - name: (Windows) Make portable ini
+      - name: Make portable ini
         working-directory: aseprite/build/bin
         run: echo '# This file is here so Aseprite behaves as a portable program' > aseprite.ini
 
