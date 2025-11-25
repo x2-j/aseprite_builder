@@ -121,9 +121,15 @@ jobs:
       - name: (Windows) Make portable zip
         working-directory: aseprite/build/bin
         run: echo '# This file is here so Aseprite behaves as a portable program' > aseprite.ini
-      - name: Create release
+      - name: Create release zip
         working-directory: aseprite/build/bin
         run: 7z -tzip a Aseprite-${{ needs.check-version.outputs.latest_tag }}-${{ runner.os }}.zip *
+      - name: Upload build as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aseprite-${{ needs.check-version.outputs.latest_tag }}-${{ runner.os }}
+          path: aseprite/build/bin/Aseprite-${{ needs.check-version.outputs.latest_tag }}-${{ runner.os }}.zip
+          if-no-files-found: error
       - name: Upload release
         uses: actions/upload-release-asset@v1
         env:
